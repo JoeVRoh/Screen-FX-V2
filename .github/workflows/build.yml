@@ -19,9 +19,11 @@ jobs:
 
       - name: Unpack the newest project zip
         run: |
-          ZIP=$(git log -1 --format= --name-only --diff-filter=AM -- '*.zip' | head -n 1)
+          ZIP=$(git log -1 --format= --name-only --diff-filter=AM -- '*.zip' | grep -m1 -i '\.zip$' || true)
+          if [ -z "$ZIP" ]; then ZIP=$(ls -t *.zip 2>/dev/null | head -n 1 || true); fi
           echo "Using: $ZIP"
-          if [ -n "$ZIP" ]; then unzip -o -q "$ZIP"; fi
+          if [ -n "$ZIP" ]; then python3 -m zipfile -e "$ZIP" .; fi
+          if [ ! -f gradlew ]; then echo "::error::Project files not found. Files in the repo:"; ls -la; exit 1; fi
 
       - uses: actions/setup-java@v4
         with:
