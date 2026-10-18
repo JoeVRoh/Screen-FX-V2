@@ -1,0 +1,58 @@
+name: Build ScreenFX
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+      SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+      SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Lets you upload the project as one zip file (handy from a phone).
+      # Uses the most recently uploaded zip, whatever its name (e.g. "ScreenFX (1).zip").
+      - name: Unpack the newest project zip
+        run: |
+          ZIP=$(git log -1 --format= --name-only --diff-filter=AM -- '*.zip' | head -n 1)
+          echo "Using: $ZIP"
+          if [ -n "$ZIP" ]; then unzip -o -q "$ZIP"; fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Test build: install this APK directly on your phone.
+      - name: Build test APK
+        run: bash ./gradlew assembleDebug --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ScreenFX-test-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+      # Google Play build: only runs once you've added the signing secrets (see README.md).
+      - name: Build signed Play bundle
+        if: env.KEYSTORE_BASE64 != ''
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          export SIGNING_KEYSTORE_PATH="$RUNNER_TEMP/upload.jks"
+          bash ./gradlew bundleRelease assembleRelease --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('app/build/outputs/bundle/release/app-release.aab') != ''
+        with:
+          name: ScreenFX-google-play
+          path: |
+            app/build/outputs/bundle/release/app-release.aab
+            app/build/outputs/apk/release/app-release.apk
